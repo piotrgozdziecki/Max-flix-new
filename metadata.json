@@ -1,0 +1,8 @@
+{
+  "name": " Max-Flix new",
+  "description": "Trójwymiarowa platformówka izometryczna w szalonym magazynie firmy Max-Fliz. Pokieruj Marcinem, Grześkiem, Dawidem lub Mateuszem, omijaj wózki widłowe i steruj magazynem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

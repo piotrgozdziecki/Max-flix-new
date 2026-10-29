@@ -1,0 +1,52 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.matches('^[a-zA-Z0-9_-]{1,64}$');
+    }
+
+    function isValidLeaderboardEntry(data) {
+      return data.keys().hasAll(['playerName', 'hero', 'score', 'coins', 'timeSeconds', 'bossDefeated', 'createdAt']) &&
+        data.playerName is string && data.playerName.size() >= 1 && data.playerName.size() <= 32 &&
+        data.hero is string && data.hero.size() <= 20 &&
+        data.score is number && data.score >= 0 && data.score <= 10000000 &&
+        data.coins is number && data.coins >= 0 && data.coins <= 100000 &&
+        data.timeSeconds is number && data.timeSeconds >= 0 &&
+        data.bossDefeated is bool &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['userId', 'displayName']) &&
+        data.userId == userId &&
+        data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 32 &&
+        (!('bestScore' in data) || (data.bestScore is number && data.bestScore >= 0)) &&
+        (!('gamesPlayed' in data) || (data.gamesPlayed is number && data.gamesPlayed >= 0));
+    }
+
+    // Default deny for unmatched documents
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Max-Fliz public shift leaderboard
+    match /leaderboard/{scoreId} {
+      allow read: if true;
+      allow create: if isValidId(scoreId) && isValidLeaderboardEntry(request.resource.data);
+      allow update, delete: if false;
+    }
+
+    // Player profiles and personal records
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserProfile(request.resource.data, userId);
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+  }
+}

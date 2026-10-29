@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "LeaderboardEntry": {
+      "title": "LeaderboardEntry",
+      "type": "object",
+      "description": "Max-Fliz Warehouse shift high score and achievements entry",
+      "properties": {
+        "playerName": {
+          "type": "string",
+          "description": "Name or nickname of the warehouse employee / player"
+        },
+        "hero": {
+          "type": "string",
+          "description": "Selected warehouse hero (Marcin, Grzesiek, Dawid, Mateusz)"
+        },
+        "score": {
+          "type": "number",
+          "description": "Final score earned in shift"
+        },
+        "coins": {
+          "type": "number",
+          "description": "Golden tiles collected"
+        },
+        "timeSeconds": {
+          "type": "number",
+          "description": "Shift duration in seconds"
+        },
+        "bossDefeated": {
+          "type": "boolean",
+          "description": "Whether Kierownik Walczak was stomped"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Submission timestamp"
+        }
+      },
+      "required": ["playerName", "hero", "score", "coins", "timeSeconds", "createdAt"]
+    },
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "type": "object",
+      "description": "Player profile and cumulative warehouse work stats",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "bestScore": {
+          "type": "number"
+        },
+        "gamesPlayed": {
+          "type": "number"
+        },
+        "lastActive": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": ["userId", "displayName"]
+    }
+  },
+  "firestore": {
+    "/leaderboard/{scoreId}": {
+      "schema": "LeaderboardEntry",
+      "description": "Public high score board of Max-Fliz warehouse staff and players"
+    },
+    "/users/{userId}": {
+      "schema": "PlayerProfile",
+      "description": "User profile with personal best stats"
+    }
+  }
+}
