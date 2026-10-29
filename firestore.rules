@@ -30,9 +30,9 @@ service cloud.firestore {
         (!('gamesPlayed' in data) || (data.gamesPlayed is number && data.gamesPlayed >= 0));
     }
 
-    // Default deny for unmatched documents
-    match /{document=**} {
-      allow read, write: if false;
+    // Test connection probe
+    match /test/{document} {
+      allow read: if true;
     }
 
     // Max-Fliz public shift leaderboard
@@ -47,6 +47,11 @@ service cloud.firestore {
       allow read: if true;
       allow create, update: if isSignedIn() && request.auth.uid == userId && isValidId(userId) && isValidUserProfile(request.resource.data, userId);
       allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny for unmatched documents
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
