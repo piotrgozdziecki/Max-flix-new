@@ -13,6 +13,7 @@ import {
   createShowroomPlant,
   createTrackSpotlights,
 } from './warehouseAssets.ts';
+import { assetLoader } from './assets.ts';
 
 export interface CutsceneCallbacks {
   onComplete: () => void;
@@ -88,7 +89,7 @@ export class IntroCutsceneManager {
     return this.active;
   }
 
-  public start() {
+  public async start() {
     console.group('%c[IntroCutscene3D] 🎬 Inicjalizacja sceny kinowej 3D (Showroom Cutscene)', 'color: #f59e0b; font-weight: bold;');
     const t0 = performance.now();
     this.active = true;
@@ -98,8 +99,14 @@ export class IntroCutsceneManager {
     this.playedTriggers.clear();
 
     this.clearRoot();
+    
+    // Split initialization to avoid long frame freeze
     this.buildStage();
+    await new Promise(r => requestAnimationFrame(r));
+    
     this.buildActors();
+    await new Promise(r => requestAnimationFrame(r));
+    
     this.createUIOverlay();
 
     if (this.scene) {
@@ -165,13 +172,7 @@ export class IntroCutsceneManager {
     neonSign.position.set(0, 6.2, -11.75);
     this.rootGroup.add(neonSign);
 
-    // Showroom Plants & Spotlights
-    const plantL = createShowroomPlant();
-    plantL.position.set(-18, 0, -10);
-    const plantR = createShowroomPlant();
-    plantR.position.set(18, 0, -10);
-    this.rootGroup.add(plantL, plantR);
-
+    // Showroom Spotlights
     const trackLights = createTrackSpotlights(40);
     trackLights.position.set(0, 7.8, -4);
     this.rootGroup.add(trackLights);
@@ -295,11 +296,18 @@ export class IntroCutsceneManager {
   private buildActors() {
     console.log('[IntroCutscene3D] 🎭 Inicjalizacja modeli 3D aktorów sceny...');
 
-    const createActorSafe = (name: string, factory: () => any) => {
+    const createActorSafe = (name: string, assetId: string, factory: () => any) => {
       const t = performance.now();
       try {
-        console.log(`[IntroCutscene3D] ⏳ Budowanie modelu 3D: ${name}...`);
-        const actor = factory();
+        // Try to get from cache first (cloned for animation safety)
+        let actor = assetLoader.getClone(assetId);
+        if (actor) {
+          console.log(`[IntroCutscene3D] 📦 Użyto zbuforowanego modelu: ${name} (${assetId})`);
+          return actor;
+        }
+
+        console.log(`[IntroCutscene3D] ⏳ Budowanie modelu 3D (brak w cache): ${name}...`);
+        actor = factory();
         console.log(`[IntroCutscene3D] ✅ Model 3D gotowy: ${name} (${Math.round(performance.now() - t)} ms)`);
         return actor;
       } catch (err) {
@@ -323,32 +331,32 @@ export class IntroCutsceneManager {
     };
 
     // 1. Walczak Boss
-    this.walczak = createActorSafe('Walczak Boss', () => createWalczakBossModel());
+    this.walczak = createActorSafe('Walczak Boss', 'models/boss_walczak.mesh', () => createWalczakBossModel());
     this.walczak.group.position.set(0, 0.4, -4);
     this.rootGroup.add(this.walczak.group);
 
     // 2. Marcin
-    this.marcin = createActorSafe('Marcin (Kierownik)', () => createCharacterModel(CHARACTERS.marcin));
+    this.marcin = createActorSafe('Marcin (Kierownik)', 'models/character_marcin.mesh', () => createCharacterModel(CHARACTERS.marcin));
     this.marcin.group.position.set(-25, 0.4, 0);
     this.rootGroup.add(this.marcin.group);
 
     // 3. Grzesiek
-    this.grzesiek = createActorSafe('Grzesiek (Ściskacz 44cm)', () => createCharacterModel(CHARACTERS.grzesiek));
+    this.grzesiek = createActorSafe('Grzesiek (Ściskacz 44cm)', 'models/character_grzesiek.mesh', () => createCharacterModel(CHARACTERS.grzesiek));
     this.grzesiek.group.position.set(-28, 0.4, 0);
     this.rootGroup.add(this.grzesiek.group);
 
     // 4. Dawid
-    this.dawid = createActorSafe('Dawid (Mistrz Gresu)', () => createCharacterModel(CHARACTERS.dawid));
+    this.dawid = createActorSafe('Dawid (Mistrz Gresu)', 'models/character_dawid.mesh', () => createCharacterModel(CHARACTERS.dawid));
     this.dawid.group.position.set(25, 0.4, 0);
     this.rootGroup.add(this.dawid.group);
 
     // 5. Mateusz
-    this.mateusz = createActorSafe('Mateusz (Gejmer)', () => createCharacterModel(CHARACTERS.mateusz));
+    this.mateusz = createActorSafe('Mateusz (Gejmer)', 'models/character_mateusz.mesh', () => createCharacterModel(CHARACTERS.mateusz));
     this.mateusz.group.position.set(28, 0.4, 0);
     this.rootGroup.add(this.mateusz.group);
 
     // 6. Piotr
-    this.piotr = createActorSafe('Piotr (Weteran & Mistrz Bimbru)', () => createCharacterModel(CHARACTERS.piotr));
+    this.piotr = createActorSafe('Piotr (Weteran & Mistrz Bimbru)', 'models/character_piotr.mesh', () => createCharacterModel(CHARACTERS.piotr));
     this.piotr.group.position.set(32, 0.4, 0);
     this.rootGroup.add(this.piotr.group);
   }

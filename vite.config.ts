@@ -34,7 +34,7 @@ export default defineConfig(({ mode }) => {
         external: ['@pmndrs/uikit/webgpu'],
         output: {
           manualChunks: {
-            'vendor-three': ['three', 'three-mesh-bvh', 'troika-three-text'],
+            'vendor-three': ['three'],
             'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
           },
         },

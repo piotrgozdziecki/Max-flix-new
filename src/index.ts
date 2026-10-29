@@ -2,8 +2,6 @@ import * as THREE from 'three';
 import * as xb from 'xrblocks';
 import { CHARACTERS } from './characters.ts';
 import {
-  db,
-  auth,
   ensureLeaderboardServices,
   submitScore,
   getTopLeaderboard,
@@ -14,22 +12,9 @@ import { sound } from './sound.ts';
 import { IntroCutsceneManager } from './introCutscene.ts';
 import { PixelIntroManager } from './pixelIntro.ts';
 import { CharacterId } from './types.ts';
+import { AssetItem, assetLoader } from './assets.ts';
 
-import {
-  getFloorTexture,
-  getWallTexture,
-  getShowroomMarbleFloorTexture,
-  getShowroomWallTexture,
-  getTerminalGraniteFloorTexture,
-  getMaxFlizLogoTexture,
-  getMarbleTexture,
-  getTileBoxTexture,
-  getHazardStripeTexture,
-  createCharacterModel,
-  createWalczakBossModel,
-  createDisplayPodium,
-  createShowroomPlant,
-} from './warehouseAssets.ts';
+// warehouseAssets imports moved to assets.ts where they are preloaded
 
 // Global Unhandled Error Logger
 window.addEventListener('error', (e) => {
@@ -39,200 +24,12 @@ window.addEventListener('unhandledrejection', (e) => {
   console.warn('Unhandled Rejection Captured:', e.reason);
 });
 
-export interface AssetItem {
-  id: string;
-  name: string;
-  category: 'texture' | 'model' | 'audio';
-  execute: () => any;
-}
-
-export class MaxFlizAssetLoader {
-  private isLoaded = false;
-  private isLoading = false;
-  private preloadPromise: Promise<void> | null = null;
-  private progress = 0;
-  private overlayElem: HTMLElement | null = null;
-  private fillElem: HTMLElement | null = null;
-  private textElem: HTMLElement | null = null;
-  private percentElem: HTMLElement | null = null;
-
-  public loadingManager!: THREE.LoadingManager;
-  public textureLoader!: THREE.TextureLoader;
-  private loadedAssets: Map<string, { category: string; durationMs: number; success: boolean }> = new Map();
-
-  constructor() {
-    this.createOverlayUI();
-    this.initLoadingManager();
-  }
-
-  private initLoadingManager() {
-    this.loadingManager = new THREE.LoadingManager();
-
-    this.loadingManager.onStart = (url, itemsLoaded, itemsTotal) => {
-      console.log(`%c[AssetLoader:LoadingManager] 🚀 Rozpoczęcie ładowania zasobów (${itemsTotal} pozycji w kolejce)... Pierwszy: ${url}`, 'color: #38bdf8; font-weight: bold;');
-    };
-
-    this.loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
-      const pct = Math.round((itemsLoaded / itemsTotal) * 100);
-      console.log(`%c[AssetLoader:LoadingManager] ⏳ Postęp [${itemsLoaded}/${itemsTotal}] (${pct}%): ${url}`, 'color: #f59e0b;');
-      this.updateProgress(pct, `Wczytywanie: ${url.split('/').pop()} (${pct}%)`);
-    };
-
-    this.loadingManager.onLoad = () => {
-      console.log(`%c[AssetLoader:LoadingManager] ✅ Wszystkie zarejestrowane zasoby zostały pomyślnie przetworzone!`, 'color: #22c55e; font-weight: bold;');
-      this.isLoaded = true;
-      this.updateProgress(100, 'Zasoby 3D gotowe!');
-    };
-
-    this.loadingManager.onError = (url) => {
-      console.error(`%c[AssetLoader:LoadingManager] ❌ Błąd ładowania zasobu: ${url}. Aktywowano procedurę bezpiecznego fallbacku.`, 'color: #ef4444; font-weight: bold;');
-    };
-
-    this.textureLoader = new THREE.TextureLoader(this.loadingManager);
-  }
-
-  private createOverlayUI() {
-    if (document.getElementById('asset-loader-overlay')) return;
-
-    const overlay = document.createElement('div');
-    overlay.id = 'asset-loader-overlay';
-    overlay.className = 'asset-loader-overlay hidden';
-    overlay.innerHTML = `
-      <div class="loader-modal-card">
-        <div class="loader-icon-spinner">🏗️</div>
-        <div class="loader-header">MAX-FLIZ 3D LOGISTICS ENGINE</div>
-        <div class="loader-subtitle">Inicjalizacja zasobów, tekstur i silnika 3D...</div>
-        <div class="loader-track">
-          <div id="loader-fill" class="loader-fill" style="width: 0%"></div>
-        </div>
-        <div class="loader-meta">
-          <span id="loader-status-text" class="loader-status-text">Inicjalizacja systemu...</span>
-          <span id="loader-percent" class="loader-percent">0%</span>
-        </div>
-      </div>
-    `;
-    document.body.appendChild(overlay);
-    this.overlayElem = overlay;
-    this.fillElem = document.getElementById('loader-fill');
-    this.textElem = document.getElementById('loader-status-text');
-    this.percentElem = document.getElementById('loader-percent');
-  }
-
-  public show(message: string = 'Wczytywanie...') {
-    if (this.overlayElem) {
-      this.overlayElem.classList.remove('hidden');
-    }
-    this.updateProgress(this.progress, message);
-  }
-
-  public hide() {
-    if (this.overlayElem) {
-      this.overlayElem.classList.add('hidden');
-    }
-  }
-
-  public updateProgress(percent: number, message: string) {
-    this.progress = Math.min(Math.max(percent, 0), 100);
-    if (this.fillElem) {
-      this.fillElem.style.width = `${this.progress}%`;
-    }
-    if (this.textElem) {
-      this.textElem.textContent = message;
-    }
-    if (this.percentElem) {
-      this.percentElem.textContent = `${Math.round(this.progress)}%`;
-    }
-  }
-
-  public preloadAll(): Promise<void> {
-    if (this.isLoaded) return Promise.resolve();
-    if (this.preloadPromise) return this.preloadPromise;
-
-    this.isLoading = true;
-    this.show('Inicjalizacja zasobów 3D...');
-
-    this.preloadPromise = (async () => {
-      const overallStartTime = performance.now();
-      console.group('%c[AssetLoader] 🔍 INSPEKCJA ZASOBÓW: Inicjalizacja modeli 3D i tekstur', 'color: #38bdf8; font-weight: bold;');
-
-      const assetList: AssetItem[] = [
-        // --- Tekstury proceduralne Three.js ---
-        { id: 'textures/floor_epoxy_warehouse.canvas', name: 'Tekstura: Polerowana Posadzka Epoksydowa (Sektor 1)', category: 'texture', execute: () => getFloorTexture() },
-        { id: 'textures/wall_corrugated_metal.canvas', name: 'Tekstura: Ściany z Blachy Przemysłowej (Sektor 1)', category: 'texture', execute: () => getWallTexture() },
-        { id: 'textures/showroom_marble_calacatta.canvas', name: 'Tekstura: Włoski Spiek Calacatta Gold (Sektor 2 / Showroom)', category: 'texture', execute: () => getShowroomMarbleFloorTexture() },
-        { id: 'textures/showroom_oak_slat_wall.canvas', name: 'Tekstura: Ściany Akustyczne Lamele Dębowe (Showroom)', category: 'texture', execute: () => getShowroomWallTexture() },
-        { id: 'textures/terminal_granite_floor.canvas', name: 'Tekstura: Granit Przemysłowy Rampy B1 (Sektor 3)', category: 'texture', execute: () => getTerminalGraniteFloorTexture() },
-        { id: 'textures/maxfliz_neon_sign.canvas', name: 'Tekstura: Neon Logotypu Firmowego Max-Fliz', category: 'texture', execute: () => getMaxFlizLogoTexture() },
-        { id: 'textures/marble_slab_calacatta.canvas', name: 'Tekstura: Wielkoformatowa Płyta Calacatta 120x280', category: 'texture', execute: () => getMarbleTexture('calacatta') },
-        { id: 'textures/marble_slab_nero.canvas', name: 'Tekstura: Marmur Nero Marquina', category: 'texture', execute: () => getMarbleTexture('nero') },
-        { id: 'textures/marble_wood_chevron.canvas', name: 'Tekstura: Gres Drewnopodobny Chevron', category: 'texture', execute: () => getMarbleTexture('wood') },
-        { id: 'textures/marble_gold_mosaic.canvas', name: 'Tekstura: Mozaika Złota Gresowa', category: 'texture', execute: () => getMarbleTexture('gold_mosaic') },
-        { id: 'textures/tile_packaging_box.canvas', name: 'Tekstura: Kartony Opakowaniowe Płytek', category: 'texture', execute: () => getTileBoxTexture() },
-        { id: 'textures/hazard_warning_stripes.canvas', name: 'Tekstura: Pasy Ostrzegawcze BHP Żółto-Czarne', category: 'texture', execute: () => getHazardStripeTexture() },
-
-        // --- Modele 3D (Postacie, Boss, Rekwizyty) ---
-        { id: 'models/character_marcin.mesh', name: 'Model 3D: Marcin (Kierownik Logistyki)', category: 'model', execute: () => createCharacterModel(CHARACTERS.marcin) },
-        { id: 'models/character_grzesiek.mesh', name: 'Model 3D: Grzesiek (Ściskacz 44cm)', category: 'model', execute: () => createCharacterModel(CHARACTERS.grzesiek) },
-        { id: 'models/character_dawid.mesh', name: 'Model 3D: Dawid (Arcymistrz Gresu)', category: 'model', execute: () => createCharacterModel(CHARACTERS.dawid) },
-        { id: 'models/character_mateusz.mesh', name: 'Model 3D: Mateusz (Gejmer & PS Maniak)', category: 'model', execute: () => createCharacterModel(CHARACTERS.mateusz) },
-        { id: 'models/character_piotr.mesh', name: 'Model 3D: Piotr (Weteran & Mistrz Bimbru)', category: 'model', execute: () => createCharacterModel(CHARACTERS.piotr) },
-        { id: 'models/boss_walczak.mesh', name: 'Model 3D: Boss Walczak (Były Kierownik)', category: 'model', execute: () => createWalczakBossModel() },
-        { id: 'models/showroom_podium.mesh', name: 'Model 3D: Podest Ekspozycyjny Showroomu', category: 'model', execute: () => createDisplayPodium(2.8, 2.2, 0.25) },
-        { id: 'models/showroom_plant.mesh', name: 'Model 3D: Złota Donica z Roślinnością Showroomu', category: 'model', execute: () => createShowroomPlant() },
-
-        // --- Moduł syntezatora audio ---
-        { id: 'audio/synthesizer_web_audio.ctx', name: 'Syntezator Dźwięków: WebAudio API Context', category: 'audio', execute: () => sound.initCtx() }
-      ];
-
-      const yieldControl = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
-
-      for (let i = 0; i < assetList.length; i++) {
-        const item = assetList[i];
-        const itemStartTime = performance.now();
-        console.log(`[AssetLoader] ⏳ [${i + 1}/${assetList.length}] Wczytywanie: ${item.name} (${item.id})...`);
-        this.loadingManager.itemStart(item.id);
-
-        try {
-          item.execute();
-          const duration = Math.round(performance.now() - itemStartTime);
-          console.log(`[AssetLoader] ✅ [${i + 1}/${assetList.length}] Załadowano pomyślnie: ${item.name} (${duration} ms)`);
-          this.loadedAssets.set(item.id, { category: item.category, durationMs: duration, success: true });
-          this.loadingManager.itemEnd(item.id);
-        } catch (err) {
-          console.error(`[AssetLoader] ❌ [${i + 1}/${assetList.length}] Błąd podczas wczytywania ${item.name} (${item.id}):`, err);
-          this.loadedAssets.set(item.id, { category: item.category, durationMs: 0, success: false });
-          this.loadingManager.itemError(item.id);
-          this.loadingManager.itemEnd(item.id); // zapobiega zablokowaniu pętli w razie wyjątku
-        }
-
-        await yieldControl();
-      }
-
-      const totalTime = Math.round(performance.now() - overallStartTime);
-      console.log(`%c[AssetLoader] 🏁 Inspekcja zakończona sukcesem. Liczba zasobów: ${assetList.length}, Czas całkowity: ${totalTime} ms.`, 'color: #22c55e; font-weight: bold;');
-      console.groupEnd();
-
-      this.isLoaded = true;
-      this.isLoading = false;
-      this.hide();
-    })();
-
-    return this.preloadPromise;
-  }
-
-  public async waitUntilReady(actionName: string = 'Uruchamianie'): Promise<void> {
-    if (this.isLoaded) return;
-    this.show(`Przygotowywanie zasobów (${actionName})...`);
-    await this.preloadAll();
-  }
-}
-
-export const assetLoader = new MaxFlizAssetLoader();
+// assetLoader moved to assets.ts
 
 class MaxFlizScene extends xb.Script {
   private engine!: MaxFlizGameEngine;
-  private cutscene!: IntroCutsceneManager;
-  private pixelIntro!: PixelIntroManager;
+  private cutscene: IntroCutsceneManager | null = null;
+  private pixelIntro: PixelIntroManager | null = null;
   private selectedCharId: CharacterId = 'marcin';
   private selectedLevelId: number = 1;
   private lastScore: number = 0;
@@ -242,7 +39,6 @@ class MaxFlizScene extends xb.Script {
   private camera: THREE.PerspectiveCamera;
   private fallbackScene: THREE.Scene;
   private lastLoopTick: number = performance.now();
-  private fallbackRafId: number | null = null;
 
   constructor() {
     super();
@@ -660,40 +456,9 @@ class MaxFlizScene extends xb.Script {
       }
     );
 
-    this.cutscene = new IntroCutsceneManager(
-      xb.core?.scene || this.fallbackScene,
-      this.camera,
-      (xb.core?.renderer as THREE.WebGLRenderer) || null,
-      {
-        onComplete: () => {
-          this.engine.setLevelVisible(true);
-          if (titleScreen) {
-            titleScreen.classList.remove('hidden');
-            titleScreen.style.setProperty('display', 'flex', 'important');
-          }
-          this.engine.startTitle();
-        },
-        onStartGame: () => {
-          this.engine.setLevelVisible(true);
-          doStartGame();
-        },
-      }
-    );
-
-    this.pixelIntro = new PixelIntroManager({
-      onComplete: () => {
-        this.engine.setLevelVisible(true);
-        if (titleScreen) {
-          titleScreen.classList.remove('hidden');
-          titleScreen.style.display = 'flex';
-        }
-        this.engine.startTitle();
-      },
-      onStartGame: () => {
-        this.engine.setLevelVisible(true);
-        doStartGame();
-      },
-    });
+    // Lazy instantiation of cutscenes only when needed
+    this.cutscene = null;
+    this.pixelIntro = null;
 
     const updateCharacterUI = (id: CharacterId) => {
       this.selectedCharId = id;
@@ -997,6 +762,29 @@ class MaxFlizScene extends xb.Script {
         e.stopPropagation();
       }
       await assetLoader.waitUntilReady('Scenka 3D');
+      
+      if (!this.cutscene) {
+        this.cutscene = new IntroCutsceneManager(
+          xb.core?.scene || this.fallbackScene,
+          this.camera,
+          (xb.core?.renderer as THREE.WebGLRenderer) || null,
+          {
+            onComplete: () => {
+              this.engine.setLevelVisible(true);
+              if (titleScreen) {
+                titleScreen.classList.remove('hidden');
+                titleScreen.style.setProperty('display', 'flex', 'important');
+              }
+              this.engine.startTitle();
+            },
+            onStartGame: () => {
+              this.engine.setLevelVisible(true);
+              doStartGame();
+            },
+          }
+        );
+      }
+
       if (titleScreen) {
         titleScreen.classList.add('hidden');
         titleScreen.style.setProperty('display', 'none', 'important');
@@ -1012,6 +800,24 @@ class MaxFlizScene extends xb.Script {
         e.stopPropagation();
       }
       await assetLoader.waitUntilReady('Pixel Intro');
+      
+      if (!this.pixelIntro) {
+        this.pixelIntro = new PixelIntroManager({
+          onComplete: () => {
+            this.engine.setLevelVisible(true);
+            if (titleScreen) {
+              titleScreen.classList.remove('hidden');
+              titleScreen.style.display = 'flex';
+            }
+            this.engine.startTitle();
+          },
+          onStartGame: () => {
+            this.engine.setLevelVisible(true);
+            doStartGame();
+          },
+        });
+      }
+
       if (titleScreen) {
         titleScreen.classList.add('hidden');
         titleScreen.style.setProperty('display', 'none', 'important');
@@ -1382,6 +1188,12 @@ class MaxFlizScene extends xb.Script {
     const scene = xb.core?.scene || this.fallbackScene;
     const camera = (xb.core?.camera as THREE.PerspectiveCamera) || this.camera;
 
+    // AGGRESSIVE BACKGROUND CLEANUP
+    if (scene) {
+      scene.background = new THREE.Color(0x020408);
+      scene.fog = new THREE.Fog(0x020408, 1, 60);
+    }
+
     if (this.engine) {
       this.engine.setScene(scene);
       this.engine.setCamera(camera);
@@ -1396,25 +1208,30 @@ class MaxFlizScene extends xb.Script {
 
     this.camera = camera;
     this.engine.startTitle();
-
-    if (!this.fallbackRafId) {
-      const watchdog = () => {
-        const now = performance.now();
-        if (now - this.lastLoopTick > 100) {
-          const dt = Math.min((now - this.lastLoopTick) / 1000, 0.05);
-          this.lastLoopTick = now;
-          this.tick(dt);
-        }
-        this.fallbackRafId = requestAnimationFrame(watchdog);
-      };
-      this.fallbackRafId = requestAnimationFrame(watchdog);
-    }
   }
+
 
   update() {
     this.lastLoopTick = performance.now();
     const rawDt = xb.getDeltaTime();
     const dt = Math.min(Math.max(rawDt || 0.016, 0.001), 0.08);
+
+    // PERSISTENT BACKGROUND ENFORCEMENT: Fight simulator environment default (trees/living room)
+    // We enforce this until an actual level starts or a cutscene is playing
+    if (xb.core.scene) {
+       const info = (xb.core.renderer as any)?.info;
+       const frame = info?.render?.frame || 0;
+       const gameState = this.engine?.getGameState() || 'title';
+       
+         // Force black background for title screen and early boot
+         if (gameState === 'title' || frame < 120) {
+           xb.core.scene.background = new THREE.Color(0x020408);
+           if (xb.core.scene.fog instanceof THREE.Fog) {
+              xb.core.scene.fog.color.setHex(0x020408);
+           }
+         }
+    }
+
     this.tick(dt);
   }
 
@@ -1515,26 +1332,38 @@ const injectThemeStyles = () => {
 };
 
 async function startApp() {
-  console.log('App Booting: Max-Fliz 3D Logistics Engine');
+  console.log('%c[App:Boot] 🚀 Rozpoczynanie sekwencji startowej Max-Fliz 3D...', 'color: #38bdf8; font-weight: bold;');
   injectThemeStyles();
 
   const titleScreen = document.getElementById('title-screen');
   const shell = document.getElementById('game-shell');
+
+  // Safety fallback: reveal UI even if loading hangs
+  const safetyTimeout = setTimeout(() => {
+    console.warn('[App:Boot] ⚠️ Przekroczono czas ładowania (Safety Timeout 12s). Wymuszanie wyświetlenia interfejsu.');
+    assetLoader.hide();
+    if (titleScreen) {
+      titleScreen.classList.remove('hidden');
+      titleScreen.style.setProperty('display', 'flex', 'important');
+      titleScreen.style.setProperty('z-index', '10000000', 'important');
+    }
+    if (shell) {
+      shell.classList.remove('hidden');
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
+    }
+  }, 12000);
 
   try {
     // 1. Show Asset Loader immediately
     assetLoader.show('Inicjalizacja systemu...');
 
     // 2. Preload all procedural textures and sounds (non-blocking)
+    console.log('[App:Boot] ⏳ Wstępne ładowanie zasobów...');
     await assetLoader.preloadAll();
+    console.log('[App:Boot] ✅ Zasoby załadowane.');
 
-    // 3. Setup Shell visibility
-    if (shell) {
-      shell.classList.remove('hidden');
-      shell.style.setProperty('display', 'flex', 'important');
-    }
-
-    // 4. Ensure canvas in container
+    // 3. Ensure canvas in container
     const canvasContainer = document.getElementById('game-canvas-container');
     let canvas = canvasContainer?.querySelector('canvas') as HTMLCanvasElement | null;
     if (!canvas && canvasContainer) {
@@ -1546,38 +1375,77 @@ async function startApp() {
       canvasContainer.appendChild(canvas);
     }
 
-    // 5. Initialize XR Blocks Options (disable simulator autostart to prevent remote stalls)
+    // 4. Initialize XR Blocks Options
+    console.log('[App:Boot] 🛠️ Inicjalizacja silnika XR Blocks...');
     const options = new xb.Options();
     options.setAppTitle('Max-Fliz Magazyn Showdown 3D');
     options.reticles.enabled = false;
-    options.enableSimulator = false;
-    options.xrButton.enabled = false;
-    options.xrButton.showEnterSimulatorButton = false;
-    options.xrButton.alwaysAutostartSimulator = false;
+    options.enableSimulator = true;
+    options.xrButton.enabled = true;
+    options.xrButton.showEnterSimulatorButton = true;
+    options.xrButton.alwaysAutostartSimulator = false; 
+    
+    // EXPLICITLY KILL SIMULATOR ENVIRONMENT BACKGROUND (TREES/ROOM)
+    // This is the primary way to ensure no "forest" shows up in AI Studio Preview.
+    // @ts-ignore - 'environment' is a simulator-specific option
+    options.simulator.environment = 'none'; 
+    options.simulator.defaultMode = xb.SimulatorMode.CONTROLLER;
+    
     if (canvas) {
       options.canvas = canvas;
     }
 
-    // 6. Create Scene Script
+    // 5. Create Scene Script
     const sceneScript = new MaxFlizScene();
     xb.add(sceneScript);
 
-    // 7. Init WebXR Engine
+    // 6. Init WebXR Engine
     try {
+      console.log('[App:Boot] 🔗 Łączenie z silnikiem renderingu...');
+      
+      // FORCE SIMULATOR ENVIRONMENT TO NONE BEFORE INIT
+      // @ts-ignore
+      options.simulator.environment = 'none';
+      
       await xb.init(options);
+      console.log('[App:Boot] ✅ Silnik XR zainicjalizowany.');
+      
+      // PERSISTENT BACKGROUND ENFORCEMENT: Fight simulator environment default (trees/living room)
+      if (xb.core.scene) {
+        xb.core.scene.background = new THREE.Color(0x020408);
+        xb.core.scene.fog = new THREE.Fog(0x020408, 1, 60);
+      }
+
+      // Ensure the container itself is opaque black to hide any leaking simulator UI
+      const container = document.getElementById('game-canvas-container');
+      if (container) {
+        container.style.backgroundColor = '#020408';
+        container.style.zIndex = '1';
+      }
     } catch (e) {
-      console.warn('XR engine initialization notice:', e);
+      console.warn('[App:Boot] ⚠️ Uwaga inicjalizacji XR:', e);
     }
 
+    clearTimeout(safetyTimeout);
     assetLoader.hide();
+
+    // 7. Reveal UI with high priority
+    if (shell) {
+      shell.classList.remove('hidden');
+      shell.style.setProperty('display', 'flex', 'important');
+      shell.style.setProperty('z-index', '9999999', 'important');
+    }
 
     if (titleScreen) {
       titleScreen.classList.remove('hidden');
       titleScreen.style.setProperty('display', 'flex', 'important');
+      titleScreen.style.setProperty('z-index', '10000000', 'important');
+      console.log('[App:Boot] 🎉 Ekran tytułowy gotowy.');
     }
 
   } catch (err) {
-    console.error('Boot Critical Error:', err);
+    console.error('[App:Boot] ❌ KRYTYCZNY BŁĄD STARTU:', err);
+    clearTimeout(safetyTimeout);
     assetLoader.hide();
     if (titleScreen) {
       titleScreen.classList.remove('hidden');

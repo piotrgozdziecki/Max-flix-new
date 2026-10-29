@@ -92,6 +92,10 @@ export class MaxFlizGameEngine {
   private currentCharacterId: CharacterId = 'marcin';
   private charDef: CharacterDef;
 
+  public getGameState(): GameState {
+    return this.state;
+  }
+
   // Player state
   private playerPos = new THREE.Vector3(0, 1, 0);
   private playerVel = new THREE.Vector3(0, 0, 0);
