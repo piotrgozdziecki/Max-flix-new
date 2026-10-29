@@ -621,3 +621,67 @@ html, body {
 .pixel-step {
   pointer-events: auto !important;
 }
+
+/* Firestore Connection Status Badge in Leaderboard Panel */
+.firestore-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: all 0.25s ease;
+  user-select: none;
+}
+
+.firestore-status-badge .status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.firestore-status-badge.checking {
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fef08a;
+  background: rgba(245, 158, 11, 0.12);
+}
+.firestore-status-badge.checking .status-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 8px #f59e0b;
+  animation: statusPulse 1.2s infinite ease-in-out;
+}
+
+.firestore-status-badge.online {
+  border-color: rgba(74, 222, 128, 0.5);
+  color: #86efac;
+  background: rgba(20, 83, 45, 0.35);
+  box-shadow: 0 0 12px rgba(74, 222, 128, 0.2);
+}
+.firestore-status-badge.online .status-dot {
+  background: #4ade80;
+  box-shadow: 0 0 10px #4ade80;
+}
+
+.firestore-status-badge.offline {
+  border-color: rgba(248, 113, 113, 0.5);
+  color: #fca5a5;
+  background: rgba(127, 29, 29, 0.35);
+  box-shadow: 0 0 12px rgba(248, 113, 113, 0.2);
+}
+.firestore-status-badge.offline .status-dot {
+  background: #f87171;
+  box-shadow: 0 0 10px #f87171;
+}
+
+@keyframes statusPulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.18); }
+}
+

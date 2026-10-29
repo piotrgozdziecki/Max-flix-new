@@ -7,6 +7,7 @@ import {
   ensureLeaderboardServices,
   submitScore,
   getTopLeaderboard,
+  testFirestoreConnection,
 } from './firebase.ts';
 import { MaxFlizGameEngine } from './game.ts';
 import { sound } from './sound.ts';
@@ -771,15 +772,45 @@ class MaxFlizScene extends xb.Script {
 
     const leaderboardLoading = document.getElementById('leaderboard-loading');
     const leaderboardList = document.getElementById('leaderboard-list');
+    const btnRefreshLeaderboard = document.getElementById('btn-refresh-leaderboard') as HTMLButtonElement | null;
+    const firestoreStatusBadge = document.getElementById('firestore-status-badge');
+    const firestoreStatusText = document.getElementById('firestore-status-text');
+
+    const updateFirestoreStatusUI = (status: 'checking' | 'online' | 'offline', customMsg?: string) => {
+      if (!firestoreStatusBadge || !firestoreStatusText) return;
+      firestoreStatusBadge.className = `firestore-status-badge ${status}`;
+      if (status === 'checking') {
+        firestoreStatusText.textContent = customMsg || 'Sprawdzanie bazy...';
+      } else if (status === 'online') {
+        firestoreStatusText.textContent = customMsg || 'Baza Firestore: Online';
+      } else {
+        firestoreStatusText.textContent = customMsg || 'Baza Firestore: Offline';
+      }
+    };
 
     const renderLeaderboard = async () => {
       if (!leaderboardLoading || !leaderboardList) return;
+
+      if (btnRefreshLeaderboard) {
+        btnRefreshLeaderboard.disabled = true;
+        btnRefreshLeaderboard.textContent = '⏳ Odświeżanie...';
+      }
+
+      updateFirestoreStatusUI('checking', 'Testowanie połączenia...');
       leaderboardLoading.classList.remove('hidden');
-      leaderboardLoading.textContent = 'Ładowanie rankingu z chmury Firebase...';
+      leaderboardLoading.textContent = 'Łączenie z bazą Firebase Firestore...';
       leaderboardList.classList.add('hidden');
       leaderboardList.innerHTML = '';
 
       try {
+        // Direct connectivity check against singleton db instance
+        const isConnected = await testFirestoreConnection();
+        if (isConnected) {
+          updateFirestoreStatusUI('online', 'Baza Firestore: Online');
+        } else {
+          updateFirestoreStatusUI('offline', 'Baza Firestore: Tryb Offline');
+        }
+
         const topScores = await getTopLeaderboard(15);
         leaderboardLoading.classList.add('hidden');
         leaderboardList.classList.remove('hidden');
@@ -790,44 +821,54 @@ class MaxFlizScene extends xb.Script {
               Brak jeszcze wyników na tej zmianie! Bądź pierwszym magazynierem, który załaduje zamówienie VIP i zapisze wynik.
             </div>
           `;
-          return;
+        } else {
+          topScores.forEach((entry, idx) => {
+            const rankIcons = ['🥇', '🥈', '🥉'];
+            const rankDisplay = idx < 3 ? rankIcons[idx] : `${idx + 1}.`;
+            const heroIcons: Record<string, string> = {
+              Marcin: '👷‍♂️', Grzesiek: '🚜', Dawid: '💪', Mateusz: '☕', Piotr: '👨‍🔧',
+            };
+            const heroIcon = heroIcons[entry.hero] || '👷‍♂️';
+            const bossBadge = entry.bossDefeated ? '<span title="Były Kierownik Walczak skasowany!">👔💥</span>' : '';
+            const mins = Math.floor(entry.timeSeconds / 60);
+            const secs = entry.timeSeconds % 60;
+            const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+            const row = document.createElement('div');
+            row.className = `leaderboard-item ${idx === 0 ? 'top-1' : ''}`;
+            row.innerHTML = `
+              <div class="leaderboard-rank">${rankDisplay}</div>
+              <div class="leaderboard-hero-tag">${heroIcon}</div>
+              <div class="leaderboard-player-info">
+                <div class="leaderboard-player-name">${entry.playerName} ${bossBadge}</div>
+                <div class="leaderboard-player-meta">${entry.hero} • Czas: ${timeFormatted} • VIP: ${entry.coins}</div>
+              </div>
+              <div class="leaderboard-score-cluster">
+                <div class="leaderboard-score-val">${entry.score} pkt</div>
+              </div>
+            `;
+            leaderboardList.appendChild(row);
+          });
         }
 
-        topScores.forEach((entry, idx) => {
-          const rankIcons = ['🥇', '🥈', '🥉'];
-          const rankDisplay = idx < 3 ? rankIcons[idx] : `${idx + 1}.`;
-          const heroIcons: Record<string, string> = {
-            Marcin: '👷‍♂️', Grzesiek: '🚜', Dawid: '💪', Mateusz: '☕', Piotr: '👨‍🔧',
-          };
-          const heroIcon = heroIcons[entry.hero] || '👷‍♂️';
-          const bossBadge = entry.bossDefeated ? '<span title="Były Kierownik Walczak skasowany!">👔💥</span>' : '';
-          const mins = Math.floor(entry.timeSeconds / 60);
-          const secs = entry.timeSeconds % 60;
-          const timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
-
-          const row = document.createElement('div');
-          row.className = `leaderboard-item ${idx === 0 ? 'top-1' : ''}`;
-          row.innerHTML = `
-            <div class="leaderboard-rank">${rankDisplay}</div>
-            <div class="leaderboard-hero-tag">${heroIcon}</div>
-            <div class="leaderboard-player-info">
-              <div class="leaderboard-player-name">${entry.playerName} ${bossBadge}</div>
-              <div class="leaderboard-player-meta">${entry.hero} • Czas: ${timeFormatted} • VIP: ${entry.coins}</div>
-            </div>
-            <div class="leaderboard-score-cluster">
-              <div class="leaderboard-score-val">${entry.score} pkt</div>
-            </div>
-          `;
-          leaderboardList.appendChild(row);
-        });
+        if (btnRefreshLeaderboard) {
+          btnRefreshLeaderboard.disabled = false;
+          btnRefreshLeaderboard.textContent = '🔄 Odśwież';
+        }
       } catch (err) {
+        updateFirestoreStatusUI('offline', 'Baza Firestore: Błąd połączenia');
         leaderboardLoading.classList.remove('hidden');
-        leaderboardLoading.textContent = 'Nie udało się pobrać rankingu. Sprawdź połączenie z bazą Firebase.';
+        leaderboardLoading.textContent = '❌ Nie udało się pobrać rankingu. Sprawdź połączenie z bazą Firebase.';
         console.warn('Leaderboard error:', err);
+
+        if (btnRefreshLeaderboard) {
+          btnRefreshLeaderboard.disabled = false;
+          btnRefreshLeaderboard.textContent = '🔄 Spróbuj ponownie';
+        }
       }
     };
 
-    document.getElementById('btn-refresh-leaderboard')?.addEventListener('click', () => {
+    btnRefreshLeaderboard?.addEventListener('click', () => {
       renderLeaderboard();
     });
 

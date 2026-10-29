@@ -462,7 +462,7 @@ export class MaxFlizGameEngine {
     this.setLevelVisible(true);
     
     // Build initial level for title visual if not already built
-    if (this.levelRoot.children.length === 0) {
+    if (this.platforms.length === 0) {
       this.loadLevel(1);
     }
   }

@@ -146,14 +146,18 @@ export function handleFirestoreError(
   operationType: OperationType,
   path: string | null
 ): FirestoreErrorInfo {
+  const errCode = (error as { code?: string })?.code || 'unknown_code';
+  const errMessage = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMessage,
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
+      userId: auth.currentUser?.uid || null,
+      email: auth.currentUser?.email || null,
+      emailVerified: auth.currentUser?.emailVerified || null,
+      isAnonymous: auth.currentUser?.isAnonymous || null,
+      tenantId: auth.currentUser?.tenantId || null,
       providerInfo:
         auth.currentUser?.providerData?.map((provider) => ({
           providerId: provider.providerId,
@@ -164,7 +168,16 @@ export function handleFirestoreError(
     path,
   };
 
-  console.warn('Firestore Error Handled:', JSON.stringify(errInfo));
+  console.error(
+    `%c[Firebase:Firestore:ERROR] ❌ Błąd operacji [${operationType.toUpperCase()}] na ścieżce '${path || 'root'}':\n` +
+      `  • Kod błędu: ${errCode}\n` +
+      `  • Komunikat: ${errMessage}\n` +
+      `  • Użytkownik: ${errInfo.authInfo.userId ? `${errInfo.authInfo.userId} (Anonimowy: ${errInfo.authInfo.isAnonymous})` : 'Gość / Niezalogowany'}\n` +
+      `  • Czas: ${new Date().toLocaleString('pl-PL')}`,
+    'color: #ef4444; font-weight: bold;',
+    { details: errInfo, stack }
+  );
+
   return errInfo;
 }
 
@@ -185,6 +198,11 @@ export function initAuth(): Promise<User | null> {
     const finish = (user: User | null) => {
       currentUser = user;
       isAuthInitialized = true;
+      if (user) {
+        console.log(`[Firebase:Auth] 🟢 Zalogowano użytkownika Firestore (UID: ${user.uid}, Anonimowy: ${user.isAnonymous}).`);
+      } else {
+        console.warn('[Firebase:Auth] ⚠️ Rejestracja anonimowa pominięta - aktywny tryb gościa.');
+      }
       resolve(user);
     };
 
@@ -199,12 +217,11 @@ export function initAuth(): Promise<User | null> {
         .catch((err) => {
           if (err?.code === 'auth/admin-restricted-operation') {
             console.warn(
-              'CRITICAL: Anonymous Authentication is disabled in your Firebase project. ' +
-              'Please enable it in the Firebase Console (Authentication > Sign-in method) ' +
-              'to allow leaderboard tracking. Fallback to guest mode active.'
+              '[Firebase:Auth] ⚠️ UWAGA: Logowanie anonimowe jest wyłączone w Twoim projekcie Firebase (auth/admin-restricted-operation). ' +
+              'Aktywowano płynny tryb gościa.'
             );
           } else {
-            console.warn('Anonymous auth note (fallback to guest mode):', err);
+            console.warn('[Firebase:Auth] ⚠️ Błąd logowania anonimowego:', err);
           }
           finish(null);
         });
@@ -219,26 +236,40 @@ export async function ensureLeaderboardServices(): Promise<void> {
     await initAuth();
     await testFirestoreConnection();
   } catch (error) {
-    console.warn('Leaderboard service warm-up skipped:', error);
+    console.warn('[Firebase:Init] ⚠️ Podgrzewanie połączenia pominięte:', error);
   }
 }
 
 // Test connection on boot per guidelines
 export async function testFirestoreConnection(): Promise<boolean> {
+  const targetDoc = 'test/connection';
+  const startTime = performance.now();
+
   try {
     const probeDoc = doc(db, 'test', 'connection');
     await getDocFromServer(probeDoc);
+    const duration = Math.round(performance.now() - startTime);
+    console.log(`[Firebase:Firestore] 🟢 Próba połączenia z bazą zakończona sukcesem (${duration} ms). Target: '${targetDoc}'.`);
     return true;
   } catch (error: unknown) {
+    const duration = Math.round(performance.now() - startTime);
+    const errCode = (error as { code?: string })?.code || 'unknown_code';
+    const errMessage = error instanceof Error ? error.message : String(error);
+
     if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore offline fallback active: Please check your Firebase configuration or internet connection.');
+      console.warn(`[Firebase:Firestore] ⚠️ Klient jest offline (${duration} ms). Brak odpowiedzi od serwera.`);
       return false;
     }
-    const err = error as { code?: string; message?: string };
-    if (err && (err.code === 'not-found' || err.code === 'permission-denied')) {
+    if (errCode === 'not-found' || errCode === 'permission-denied') {
+      console.log(`[Firebase:Firestore] 🟢 Odpowiedź serwera Firestore odebrana ('${errCode}', ${duration} ms) -> Połączenie aktywne.`);
       return true;
     }
-    console.warn('Firestore probe note:', err?.message || error);
+    console.error(
+      `[Firebase:Firestore] ❌ Błąd próby połączenia (${duration} ms):\n` +
+      `  • Kod: ${errCode}\n` +
+      `  • Komunikat: ${errMessage}\n` +
+      `  • Czas: ${new Date().toLocaleString('pl-PL')}`
+    );
     return false;
   }
 }
@@ -260,6 +291,8 @@ export async function submitScore(entry: Omit<LeaderboardEntry, 'createdAt'>): P
     createdAt: new Date().toISOString(),
   };
 
+  console.log(`[Firebase:Leaderboard] 📤 Wysyłanie wyniku '${payload.playerName}' (${payload.score} pkt) do '${collectionPath}/${cleanId}'...`);
+
   try {
     const cached = parseCachedLeaderboard();
     const nextList = [...cached, { ...payload, id: cleanId }]
@@ -267,15 +300,17 @@ export async function submitScore(entry: Omit<LeaderboardEntry, 'createdAt'>): P
       .slice(0, 20);
 
     safeStorage.setItem('maxfliz_cached_leaderboard', JSON.stringify(nextList));
-  } catch {
-    // ignore caching errors
+  } catch (err) {
+    console.warn('[Firebase:Cache] ⚠️ Błąd buforowania wyniku lokalnego:', err);
   }
 
   try {
     const docRef = doc(db, collectionPath, cleanId);
     await setDoc(docRef, payload);
+    console.log(`[Firebase:Leaderboard] ✅ Wynik gracza '${payload.playerName}' zapisan pomyślnie w Firestore!`);
     return cleanId;
   } catch (err) {
+    console.error(`[Firebase:Leaderboard] ❌ Nie udało się zapisać wyniku w Firestore. Logowanie diagnostyczne...`);
     handleFirestoreError(err, OperationType.WRITE, `${collectionPath}/${cleanId}`);
     return `local_${Date.now()}`;
   }
@@ -286,6 +321,7 @@ export async function submitScore(entry: Omit<LeaderboardEntry, 'createdAt'>): P
  */
 export async function getTopLeaderboard(maxEntries = 10): Promise<LeaderboardEntry[]> {
   const collectionPath = 'leaderboard';
+  console.log(`[Firebase:Leaderboard] 📥 Pobieranie TOP ${maxEntries} wyników z kolekcji '${collectionPath}'...`);
 
   try {
     const q = query(collection(db, collectionPath), orderBy('score', 'desc'), limit(maxEntries));
@@ -307,16 +343,20 @@ export async function getTopLeaderboard(maxEntries = 10): Promise<LeaderboardEnt
       );
     });
 
+    console.log(`[Firebase:Leaderboard] ✅ Pobrano ${results.length} wyników bezpośrednio z Firestore.`);
+
     if (results.length > 0) {
       safeStorage.setItem('maxfliz_cached_leaderboard', JSON.stringify(results));
       return results;
     }
   } catch (err) {
+    console.error(`[Firebase:Leaderboard] ❌ Błąd pobierania rankingu z Firestore (przełączanie na lokalny bufor)...`);
     handleFirestoreError(err, OperationType.LIST, collectionPath);
   }
 
   const cached = parseCachedLeaderboard();
   if (cached.length > 0) {
+    console.log(`[Firebase:Leaderboard] ℹ️ Odczytano ${cached.length} zapamiętanych wyników z lokalnej pamięci (offline mode).`);
     return cached
       .map((item) => normalizeLeaderboardEntry(item, item.id))
       .sort((a, b) => Number(b.score) - Number(a.score))
