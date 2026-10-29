@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import * as xb from 'xrblocks';
 import { CHARACTERS } from './characters.ts';
 import {
+  db,
+  auth,
   ensureLeaderboardServices,
   submitScore,
   getTopLeaderboard,

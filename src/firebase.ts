@@ -1,4 +1,4 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   initializeFirestore,
   getFirestore,
@@ -61,26 +61,48 @@ const normalizeLeaderboardEntry = (
   createdAt: String(data.createdAt || new Date().toISOString()),
 });
 
-// Initialize Firebase App
-const app = initializeApp(firebaseConfig);
+// Singleton Pattern for Firebase Services
+class FirebaseServicesSingleton {
+  private static instance: FirebaseServicesSingleton;
+  public app: ReturnType<typeof initializeApp>;
+  public db: ReturnType<typeof initializeFirestore>;
+  public auth: ReturnType<typeof getAuth>;
 
-// Initialize Firestore targeting the specific provisioned database ID with forced long polling & disabled fetch streams.
-// This prevents the 10-second backend timeout error in iframe, sandbox, and Cloud Run proxy environments.
-const firestoreSettings = {
-  experimentalForceLongPolling: true,
-  useFetchStreams: false,
-};
+  private constructor() {
+    const existingApps = getApps();
+    this.app = existingApps.length ? getApp() : initializeApp(firebaseConfig);
 
-export const db = (firebaseConfig as any).firestoreDatabaseId
-  ? initializeFirestore(
-      app,
-      firestoreSettings,
-      (firebaseConfig as any).firestoreDatabaseId
-    )
-  : initializeFirestore(app, firestoreSettings);
+    const firestoreSettings = {
+      experimentalForceLongPolling: true,
+      useFetchStreams: false,
+    };
 
-// Initialize Firebase Authentication
-export const auth = getAuth(app);
+    const databaseId = (firebaseConfig as any).firestoreDatabaseId;
+    if (databaseId) {
+      this.db = initializeFirestore(this.app, firestoreSettings, databaseId);
+    } else {
+      this.db = initializeFirestore(this.app, firestoreSettings);
+    }
+
+    this.auth = getAuth(this.app);
+  }
+
+  public static getInstance(): FirebaseServicesSingleton {
+    if (!FirebaseServicesSingleton.instance) {
+      FirebaseServicesSingleton.instance = new FirebaseServicesSingleton();
+    }
+    return FirebaseServicesSingleton.instance;
+  }
+}
+
+const firebaseServices = FirebaseServicesSingleton.getInstance();
+
+export const app = firebaseServices.app;
+export const db = firebaseServices.db;
+export const auth = firebaseServices.auth;
+export const getFirebaseInstance = () => FirebaseServicesSingleton.getInstance();
+
+
 
 export interface LeaderboardEntry {
   id?: string;
