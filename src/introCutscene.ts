@@ -89,6 +89,8 @@ export class IntroCutsceneManager {
   }
 
   public start() {
+    console.group('%c[IntroCutscene3D] 🎬 Inicjalizacja sceny kinowej 3D (Showroom Cutscene)', 'color: #f59e0b; font-weight: bold;');
+    const t0 = performance.now();
     this.active = true;
     this.paused = false;
     this.currentTime = 0;
@@ -107,12 +109,14 @@ export class IntroCutsceneManager {
     try {
       sound.playCinematicBoom();
     } catch (e) {
-      console.warn('Intro sound notice:', e);
+      console.warn('[IntroCutscene3D] Audio notice:', e);
     }
 
     // Immediately render frame 0 so Act 1 and subtitles are ready on frame 0
     this.updateTimeline(0);
     this.updateUIOverlay();
+    console.log(`[IntroCutscene3D] ✅ Scena kinowa 3D zainicjalizowana pomyślnie w ${Math.round(performance.now() - t0)} ms.`);
+    console.groupEnd();
   }
 
   public stop() {
@@ -289,33 +293,62 @@ export class IntroCutsceneManager {
   }
 
   private buildActors() {
+    console.log('[IntroCutscene3D] 🎭 Inicjalizacja modeli 3D aktorów sceny...');
+
+    const createActorSafe = (name: string, factory: () => any) => {
+      const t = performance.now();
+      try {
+        console.log(`[IntroCutscene3D] ⏳ Budowanie modelu 3D: ${name}...`);
+        const actor = factory();
+        console.log(`[IntroCutscene3D] ✅ Model 3D gotowy: ${name} (${Math.round(performance.now() - t)} ms)`);
+        return actor;
+      } catch (err) {
+        console.error(`[IntroCutscene3D] ❌ Błąd podczas budowania modelu 3D ${name}:`, err);
+        const fallbackGroup = new THREE.Group();
+        const placeholder = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.8, 0.5), new THREE.MeshStandardMaterial({ color: 0x888888 }));
+        placeholder.position.y = 0.9;
+        fallbackGroup.add(placeholder);
+        return {
+          group: fallbackGroup,
+          leftArm: placeholder,
+          rightArm: placeholder,
+          leftLeg: placeholder,
+          rightLeg: placeholder,
+          armL: placeholder,
+          armR: placeholder,
+          legL: placeholder,
+          legR: placeholder,
+        };
+      }
+    };
+
     // 1. Walczak Boss
-    this.walczak = createWalczakBossModel();
+    this.walczak = createActorSafe('Walczak Boss', () => createWalczakBossModel());
     this.walczak.group.position.set(0, 0.4, -4);
     this.rootGroup.add(this.walczak.group);
 
     // 2. Marcin
-    this.marcin = createCharacterModel(CHARACTERS.marcin);
+    this.marcin = createActorSafe('Marcin (Kierownik)', () => createCharacterModel(CHARACTERS.marcin));
     this.marcin.group.position.set(-25, 0.4, 0);
     this.rootGroup.add(this.marcin.group);
 
     // 3. Grzesiek
-    this.grzesiek = createCharacterModel(CHARACTERS.grzesiek);
+    this.grzesiek = createActorSafe('Grzesiek (Ściskacz 44cm)', () => createCharacterModel(CHARACTERS.grzesiek));
     this.grzesiek.group.position.set(-28, 0.4, 0);
     this.rootGroup.add(this.grzesiek.group);
 
     // 4. Dawid
-    this.dawid = createCharacterModel(CHARACTERS.dawid);
+    this.dawid = createActorSafe('Dawid (Mistrz Gresu)', () => createCharacterModel(CHARACTERS.dawid));
     this.dawid.group.position.set(25, 0.4, 0);
     this.rootGroup.add(this.dawid.group);
 
     // 5. Mateusz
-    this.mateusz = createCharacterModel(CHARACTERS.mateusz);
+    this.mateusz = createActorSafe('Mateusz (Gejmer)', () => createCharacterModel(CHARACTERS.mateusz));
     this.mateusz.group.position.set(28, 0.4, 0);
     this.rootGroup.add(this.mateusz.group);
 
     // 6. Piotr
-    this.piotr = createCharacterModel(CHARACTERS.piotr);
+    this.piotr = createActorSafe('Piotr (Weteran & Mistrz Bimbru)', () => createCharacterModel(CHARACTERS.piotr));
     this.piotr.group.position.set(32, 0.4, 0);
     this.rootGroup.add(this.piotr.group);
   }

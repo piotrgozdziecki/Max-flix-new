@@ -459,6 +459,7 @@ export class MaxFlizGameEngine {
     this.rebuildPlayerMesh();
     this.playerPos.set(0, 0.5, 0);
     this.callbacks.onBossUpdate?.('', 0, 0, false);
+    this.setLevelVisible(true);
     
     // Build initial level for title visual if not already built
     if (this.levelRoot.children.length === 0) {

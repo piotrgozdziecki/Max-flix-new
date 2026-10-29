@@ -175,7 +175,15 @@ export function initAuth(): Promise<User | null> {
       signInAnonymously(auth)
         .then((cred) => finish(cred.user))
         .catch((err) => {
-          console.warn('Anonymous auth note (fallback to guest mode):', err);
+          if (err?.code === 'auth/admin-restricted-operation') {
+            console.warn(
+              'CRITICAL: Anonymous Authentication is disabled in your Firebase project. ' +
+              'Please enable it in the Firebase Console (Authentication > Sign-in method) ' +
+              'to allow leaderboard tracking. Fallback to guest mode active.'
+            );
+          } else {
+            console.warn('Anonymous auth note (fallback to guest mode):', err);
+          }
           finish(null);
         });
     });

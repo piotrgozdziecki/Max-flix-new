@@ -22,6 +22,10 @@ import {
   getMarbleTexture,
   getTileBoxTexture,
   getHazardStripeTexture,
+  createCharacterModel,
+  createWalczakBossModel,
+  createDisplayPodium,
+  createShowroomPlant,
 } from './warehouseAssets.ts';
 
 // Global Unhandled Error Logger
@@ -31,6 +35,13 @@ window.addEventListener('error', (e) => {
 window.addEventListener('unhandledrejection', (e) => {
   console.warn('Unhandled Rejection Captured:', e.reason);
 });
+
+export interface AssetItem {
+  id: string;
+  name: string;
+  category: 'texture' | 'model' | 'audio';
+  execute: () => any;
+}
 
 export class MaxFlizAssetLoader {
   private isLoaded = false;
@@ -42,8 +53,39 @@ export class MaxFlizAssetLoader {
   private textElem: HTMLElement | null = null;
   private percentElem: HTMLElement | null = null;
 
+  public loadingManager!: THREE.LoadingManager;
+  public textureLoader!: THREE.TextureLoader;
+  private loadedAssets: Map<string, { category: string; durationMs: number; success: boolean }> = new Map();
+
   constructor() {
     this.createOverlayUI();
+    this.initLoadingManager();
+  }
+
+  private initLoadingManager() {
+    this.loadingManager = new THREE.LoadingManager();
+
+    this.loadingManager.onStart = (url, itemsLoaded, itemsTotal) => {
+      console.log(`%c[AssetLoader:LoadingManager] 🚀 Rozpoczęcie ładowania zasobów (${itemsTotal} pozycji w kolejce)... Pierwszy: ${url}`, 'color: #38bdf8; font-weight: bold;');
+    };
+
+    this.loadingManager.onProgress = (url, itemsLoaded, itemsTotal) => {
+      const pct = Math.round((itemsLoaded / itemsTotal) * 100);
+      console.log(`%c[AssetLoader:LoadingManager] ⏳ Postęp [${itemsLoaded}/${itemsTotal}] (${pct}%): ${url}`, 'color: #f59e0b;');
+      this.updateProgress(pct, `Wczytywanie: ${url.split('/').pop()} (${pct}%)`);
+    };
+
+    this.loadingManager.onLoad = () => {
+      console.log(`%c[AssetLoader:LoadingManager] ✅ Wszystkie zarejestrowane zasoby zostały pomyślnie przetworzone!`, 'color: #22c55e; font-weight: bold;');
+      this.isLoaded = true;
+      this.updateProgress(100, 'Zasoby 3D gotowe!');
+    };
+
+    this.loadingManager.onError = (url) => {
+      console.error(`%c[AssetLoader:LoadingManager] ❌ Błąd ładowania zasobu: ${url}. Aktywowano procedurę bezpiecznego fallbacku.`, 'color: #ef4444; font-weight: bold;');
+    };
+
+    this.textureLoader = new THREE.TextureLoader(this.loadingManager);
   }
 
   private createOverlayUI() {
@@ -107,54 +149,69 @@ export class MaxFlizAssetLoader {
     this.show('Inicjalizacja zasobów 3D...');
 
     this.preloadPromise = (async () => {
-      try {
-        const yieldControl = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
+      const overallStartTime = performance.now();
+      console.group('%c[AssetLoader] 🔍 INSPEKCJA ZASOBÓW: Inicjalizacja modeli 3D i tekstur', 'color: #38bdf8; font-weight: bold;');
 
-        this.updateProgress(15, 'Generowanie tekstur: Podłogi & Ściany...');
-        getFloorTexture();
-        await yieldControl();
-        getWallTexture();
-        await yieldControl();
+      const assetList: AssetItem[] = [
+        // --- Tekstury proceduralne Three.js ---
+        { id: 'textures/floor_epoxy_warehouse.canvas', name: 'Tekstura: Polerowana Posadzka Epoksydowa (Sektor 1)', category: 'texture', execute: () => getFloorTexture() },
+        { id: 'textures/wall_corrugated_metal.canvas', name: 'Tekstura: Ściany z Blachy Przemysłowej (Sektor 1)', category: 'texture', execute: () => getWallTexture() },
+        { id: 'textures/showroom_marble_calacatta.canvas', name: 'Tekstura: Włoski Spiek Calacatta Gold (Sektor 2 / Showroom)', category: 'texture', execute: () => getShowroomMarbleFloorTexture() },
+        { id: 'textures/showroom_oak_slat_wall.canvas', name: 'Tekstura: Ściany Akustyczne Lamele Dębowe (Showroom)', category: 'texture', execute: () => getShowroomWallTexture() },
+        { id: 'textures/terminal_granite_floor.canvas', name: 'Tekstura: Granit Przemysłowy Rampy B1 (Sektor 3)', category: 'texture', execute: () => getTerminalGraniteFloorTexture() },
+        { id: 'textures/maxfliz_neon_sign.canvas', name: 'Tekstura: Neon Logotypu Firmowego Max-Fliz', category: 'texture', execute: () => getMaxFlizLogoTexture() },
+        { id: 'textures/marble_slab_calacatta.canvas', name: 'Tekstura: Wielkoformatowa Płyta Calacatta 120x280', category: 'texture', execute: () => getMarbleTexture('calacatta') },
+        { id: 'textures/marble_slab_nero.canvas', name: 'Tekstura: Marmur Nero Marquina', category: 'texture', execute: () => getMarbleTexture('nero') },
+        { id: 'textures/marble_wood_chevron.canvas', name: 'Tekstura: Gres Drewnopodobny Chevron', category: 'texture', execute: () => getMarbleTexture('wood') },
+        { id: 'textures/marble_gold_mosaic.canvas', name: 'Tekstura: Mozaika Złota Gresowa', category: 'texture', execute: () => getMarbleTexture('gold_mosaic') },
+        { id: 'textures/tile_packaging_box.canvas', name: 'Tekstura: Kartony Opakowaniowe Płytek', category: 'texture', execute: () => getTileBoxTexture() },
+        { id: 'textures/hazard_warning_stripes.canvas', name: 'Tekstura: Pasy Ostrzegawcze BHP Żółto-Czarne', category: 'texture', execute: () => getHazardStripeTexture() },
 
-        this.updateProgress(40, 'Generowanie tekstur: Showroom...');
-        getShowroomMarbleFloorTexture();
-        await yieldControl();
-        getShowroomWallTexture();
-        await yieldControl();
-        getTerminalGraniteFloorTexture();
-        await yieldControl();
+        // --- Modele 3D (Postacie, Boss, Rekwizyty) ---
+        { id: 'models/character_marcin.mesh', name: 'Model 3D: Marcin (Kierownik Logistyki)', category: 'model', execute: () => createCharacterModel(CHARACTERS.marcin) },
+        { id: 'models/character_grzesiek.mesh', name: 'Model 3D: Grzesiek (Ściskacz 44cm)', category: 'model', execute: () => createCharacterModel(CHARACTERS.grzesiek) },
+        { id: 'models/character_dawid.mesh', name: 'Model 3D: Dawid (Arcymistrz Gresu)', category: 'model', execute: () => createCharacterModel(CHARACTERS.dawid) },
+        { id: 'models/character_mateusz.mesh', name: 'Model 3D: Mateusz (Gejmer & PS Maniak)', category: 'model', execute: () => createCharacterModel(CHARACTERS.mateusz) },
+        { id: 'models/character_piotr.mesh', name: 'Model 3D: Piotr (Weteran & Mistrz Bimbru)', category: 'model', execute: () => createCharacterModel(CHARACTERS.piotr) },
+        { id: 'models/boss_walczak.mesh', name: 'Model 3D: Boss Walczak (Były Kierownik)', category: 'model', execute: () => createWalczakBossModel() },
+        { id: 'models/showroom_podium.mesh', name: 'Model 3D: Podest Ekspozycyjny Showroomu', category: 'model', execute: () => createDisplayPodium(2.8, 2.2, 0.25) },
+        { id: 'models/showroom_plant.mesh', name: 'Model 3D: Złota Donica z Roślinnością Showroomu', category: 'model', execute: () => createShowroomPlant() },
 
-        this.updateProgress(65, 'Generowanie tekstur: Logistyka...');
-        getMaxFlizLogoTexture();
-        await yieldControl();
-        getMarbleTexture('calacatta');
-        await yieldControl();
-        getMarbleTexture('nero');
-        await yieldControl();
-        getMarbleTexture('wood');
-        await yieldControl();
-        getMarbleTexture('gold_mosaic');
-        await yieldControl();
-        getTileBoxTexture();
-        await yieldControl();
-        getHazardStripeTexture();
-        await yieldControl();
+        // --- Moduł syntezatora audio ---
+        { id: 'audio/synthesizer_web_audio.ctx', name: 'Syntezator Dźwięków: WebAudio API Context', category: 'audio', execute: () => sound.initCtx() }
+      ];
 
-        this.updateProgress(85, 'Inicjalizacja syntezatora dźwięków...');
-        try { sound.initCtx(); } catch (e) { console.warn('Sound Init Notice:', e); }
-        await yieldControl();
+      const yieldControl = () => new Promise<void>((r) => requestAnimationFrame(() => r()));
 
-        this.updateProgress(100, 'Silnik 3D gotowy do uruchomienia!');
-        await yieldControl();
+      for (let i = 0; i < assetList.length; i++) {
+        const item = assetList[i];
+        const itemStartTime = performance.now();
+        console.log(`[AssetLoader] ⏳ [${i + 1}/${assetList.length}] Wczytywanie: ${item.name} (${item.id})...`);
+        this.loadingManager.itemStart(item.id);
 
-        this.isLoaded = true;
-      } catch (err) {
-        console.warn('Asset loader preloading notice:', err);
-        this.isLoaded = true;
-      } finally {
-        this.isLoading = false;
-        this.hide();
+        try {
+          item.execute();
+          const duration = Math.round(performance.now() - itemStartTime);
+          console.log(`[AssetLoader] ✅ [${i + 1}/${assetList.length}] Załadowano pomyślnie: ${item.name} (${duration} ms)`);
+          this.loadedAssets.set(item.id, { category: item.category, durationMs: duration, success: true });
+          this.loadingManager.itemEnd(item.id);
+        } catch (err) {
+          console.error(`[AssetLoader] ❌ [${i + 1}/${assetList.length}] Błąd podczas wczytywania ${item.name} (${item.id}):`, err);
+          this.loadedAssets.set(item.id, { category: item.category, durationMs: 0, success: false });
+          this.loadingManager.itemError(item.id);
+          this.loadingManager.itemEnd(item.id); // zapobiega zablokowaniu pętli w razie wyjątku
+        }
+
+        await yieldControl();
       }
+
+      const totalTime = Math.round(performance.now() - overallStartTime);
+      console.log(`%c[AssetLoader] 🏁 Inspekcja zakończona sukcesem. Liczba zasobów: ${assetList.length}, Czas całkowity: ${totalTime} ms.`, 'color: #22c55e; font-weight: bold;');
+      console.groupEnd();
+
+      this.isLoaded = true;
+      this.isLoading = false;
+      this.hide();
     })();
 
     return this.preloadPromise;
@@ -225,7 +282,8 @@ class MaxFlizScene extends xb.Script {
 
     window.addEventListener('resize', handleResize);
     window.addEventListener('orientationchange', () => setTimeout(handleResize, 150));
-    handleResize();
+    // Do not call handleResize() immediately here because xb.core.renderer is not ready yet.
+    // It will be handled in the init() method below.
 
     const hudHeroName = document.getElementById('hud-hero-name');
     const hudHeroRole = document.getElementById('hud-hero-role');
@@ -1270,9 +1328,16 @@ class MaxFlizScene extends xb.Script {
   }
 
   init() {
+    // Initial resize now that xb.core is ready
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const renderer = (xb.core?.renderer as THREE.WebGLRenderer) || null;
+    if (renderer && typeof renderer.setSize === 'function') {
+      renderer.setSize(width, height, false);
+    }
+
     const scene = xb.core?.scene || this.fallbackScene;
     const camera = (xb.core?.camera as THREE.PerspectiveCamera) || this.camera;
-    const renderer = (xb.core?.renderer as THREE.WebGLRenderer) || null;
 
     if (this.engine) {
       this.engine.setScene(scene);
@@ -1348,8 +1413,20 @@ const injectThemeStyles = () => {
   const style = document.createElement('style');
   style.id = 'maxfliz-inline-theme';
   style.textContent = `
+    #game-canvas-container {
+      z-index: 1 !important;
+      position: absolute !important;
+      inset: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      pointer-events: auto !important;
+    }
+    #game-canvas-container canvas, canvas {
+      z-index: 1 !important;
+      pointer-events: auto !important;
+    }
     #game-shell {
-      z-index: 10000 !important;
+      z-index: 999999 !important;
       position: fixed !important;
       inset: 0 !important;
       display: flex !important;
@@ -1359,7 +1436,7 @@ const injectThemeStyles = () => {
       visibility: visible !important;
     }
     .game-screen {
-      z-index: 10001 !important;
+      z-index: 1000000 !important;
       position: fixed !important;
       inset: 0 !important;
       display: flex !important;
@@ -1367,9 +1444,18 @@ const injectThemeStyles = () => {
       align-items: center !important;
       justify-content: center !important;
       pointer-events: auto !important;
-      background: rgba(11, 15, 25, 0.9) !important;
+      background: rgba(11, 15, 25, 0.82) !important;
       opacity: 1 !important;
       visibility: visible !important;
+    }
+    .game-screen.hidden, #title-screen.hidden, .hidden {
+      display: none !important;
+      pointer-events: none !important;
+      visibility: hidden !important;
+    }
+    .game-modal {
+      z-index: 1000001 !important;
+      pointer-events: auto !important;
     }
     .hud-layer {
       pointer-events: none !important;
@@ -1377,58 +1463,12 @@ const injectThemeStyles = () => {
     .hud-layer button, .hud-layer .minimap-container {
       pointer-events: auto !important;
     }
-    #title-screen {
-      display: flex !important;
-    }
     #asset-loader-overlay {
-      z-index: 20000 !important;
+      z-index: 2000000 !important;
       background: #0b0f19 !important;
-    }
-    #game-canvas-container {
-      z-index: 1 !important;
-      position: absolute !important;
-      inset: 0 !important;
-      pointer-events: auto !important;
-    }
-    canvas {
-      z-index: 1 !important;
-      pointer-events: auto !important;
-    }
-    #emergency-start-btn {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 30000;
-      background: #f59e0b;
-      color: #000;
-      padding: 18px 30px;
-      border-radius: 999px;
-      font-weight: 900;
-      font-size: 16px;
-      border: 3px solid white;
-      box-shadow: 0 0 30px rgba(245, 158, 11, 0.6);
-      cursor: pointer;
-      text-transform: uppercase;
-      letter-spacing: 1px;
     }
   `;
   document.head.appendChild(style);
-
-  // Health check loop to ensure UI shell is never buried or hidden by external factors
-  setInterval(() => {
-    const shell = document.getElementById('game-shell');
-    if (shell) {
-      if (shell.classList.contains('hidden')) shell.classList.remove('hidden');
-      if (shell.style.display !== 'flex') shell.style.setProperty('display', 'flex', 'important');
-      if (shell.style.zIndex !== '10000') shell.style.setProperty('z-index', '10000', 'important');
-      if (shell.style.opacity !== '1') shell.style.setProperty('opacity', '1', 'important');
-    }
-    const assetLoader = document.getElementById('asset-loader-overlay');
-    if (assetLoader && assetLoader.classList.contains('hidden')) {
-      if (assetLoader.style.display !== 'none') assetLoader.style.setProperty('display', 'none', 'important');
-    }
-  }, 2000);
 };
 
 async function startApp() {

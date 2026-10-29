@@ -39,6 +39,7 @@ export class PixelIntroManager {
   }
 
   public start() {
+    console.log('%c[PixelIntro] 🕹️ Inicjalizacja Retro Intro 2D/VHS (20s High-Octane Action)...', 'color: #38bdf8; font-weight: bold;');
     this.active = true;
     this.paused = false;
     this.time = 0;
@@ -50,7 +51,7 @@ export class PixelIntroManager {
     try {
       sound.playCinematicBoom();
     } catch (e) {
-      console.warn('Sound Boom Notice:', e);
+      console.warn('[PixelIntro] Sound Boom Notice:', e);
     }
 
     // Immediately render scene 0 and update UI
@@ -58,6 +59,7 @@ export class PixelIntroManager {
     this.updateUI();
 
     this.lastFrameTime = performance.now();
+    console.log('[PixelIntro] ✅ Retro Intro 2D gotowe i uruchomione.');
     this.loop();
   }
 
